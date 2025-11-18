@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'kalshi-trading-monitor'
+
+scrape_configs:
+  - job_name: 'kalshi-trading'
+    static_configs:
+      - targets: ['app:9090']
+        labels:
+          service: 'kalshi-trading-system'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+# Alerting rules (optional)
+# rule_files:
+#   - 'alerts.yml'

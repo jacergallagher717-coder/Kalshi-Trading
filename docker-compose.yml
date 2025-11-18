@@ -1,0 +1,138 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: kalshi_postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-kalshi_trading}
+      POSTGRES_USER: ${DB_USER:-kalshi_trader}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-kalshi_trader}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: kalshi_redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  app:
+    build: .
+    container_name: kalshi_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-kalshi_trader}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-kalshi_trading}
+      - REDIS_URL=redis://redis:6379/0
+      - KALSHI_API_KEY=${KALSHI_API_KEY}
+      - KALSHI_API_SECRET=${KALSHI_API_SECRET}
+      - KALSHI_BASE_URL=${KALSHI_BASE_URL}
+      - TWITTER_BEARER_TOKEN=${TWITTER_BEARER_TOKEN}
+      - NEWSAPI_KEY=${NEWSAPI_KEY}
+      - ALPHAVANTAGE_KEY=${ALPHAVANTAGE_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - TRADING_ENABLED=${TRADING_ENABLED:-false}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./config:/app/config
+      - ./logs:/var/log/kalshi_trading
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+      - "9090:9090"
+    restart: unless-stopped
+    command: python main.py
+
+  celery_worker:
+    build: .
+    container_name: kalshi_celery_worker
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-kalshi_trader}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-kalshi_trading}
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./config:/app/config
+      - ./logs:/var/log/kalshi_trading
+    command: celery -A tasks worker --loglevel=info --concurrency=4
+    restart: unless-stopped
+
+  celery_beat:
+    build: .
+    container_name: kalshi_celery_beat
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-kalshi_trader}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-kalshi_trading}
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./config:/app/config
+      - ./logs:/var/log/kalshi_trading
+    command: celery -A tasks beat --loglevel=info
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: kalshi_prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "9091:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: kalshi_grafana
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  default:
+    name: kalshi_network

@@ -1,0 +1,159 @@
+trading:
+  enabled: false  # Master kill switch - set to true when ready
+  max_position_size_usd: 500
+  max_portfolio_heat: 0.20  # 20% of capital max in positions
+  min_edge_threshold: 0.05  # 5% edge required to trade
+  max_daily_loss: 1000
+  position_timeout_hours: 168  # Auto-close after 7 days
+  max_open_positions: 10
+
+risk:
+  kelly_fraction: 0.25  # Use 1/4 Kelly for conservative sizing
+  max_trades_per_hour: 20
+  max_trades_per_day: 100
+  cooldown_after_loss_seconds: 300  # 5 min cooldown after loss
+  stop_loss_percentage: 0.30  # Stop out at -30%
+  profit_target_multiplier: 2.0  # Take profit at 2x expected edge
+  circuit_breaker_consecutive_losses: 3
+  max_slippage_percentage: 0.05
+
+strategies:
+  speed_arbitrage:
+    enabled: true
+    latency_target_seconds: 10
+    min_confidence: 0.70
+    min_edge: 0.05
+    max_position_size: 500
+
+  weather_model:
+    enabled: true
+    forecast_horizon_days: 14
+    min_edge: 0.08
+    update_frequency_minutes: 60
+    data_sources:
+      - noaa_gfs
+      - historical_normals
+
+  economic_model:
+    enabled: true
+    min_edge: 0.06
+    indicators:
+      - gdp_now
+      - adp_employment
+      - leading_indicators
+
+  cross_platform_arb:
+    enabled: false  # Requires Polymarket setup
+    min_spread: 0.05
+    max_position_size: 300
+
+  pattern_detection:
+    enabled: true
+    recency_bias:
+      enabled: true
+      lookback_days: 7
+      reversal_threshold: 0.20
+    favorite_longshot:
+      enabled: true
+      extreme_probability_threshold: 0.10
+    low_liquidity:
+      enabled: true
+      min_volume_threshold: 10000
+      min_spread_threshold: 0.05
+
+news_monitoring:
+  twitter:
+    enabled: true
+    poll_interval_seconds: 2
+    accounts:
+      - FirstSquawk
+      - BNONews
+      - CNBCnow
+      - Reuters
+      - DeItaone
+      - fxhedgers
+    keywords:
+      economic:
+        - CPI
+        - inflation
+        - unemployment
+        - GDP
+        - Fed
+        - interest rate
+        - jobs report
+      political:
+        - Congress
+        - Senate
+        - legislation
+        - vote
+        - bill passed
+      weather:
+        - hurricane
+        - temperature
+        - precipitation
+        - snow
+        - heat wave
+      sports:
+        - injury
+        - trade
+        - playoff
+        - championship
+
+  newsapi:
+    enabled: true
+    poll_interval_seconds: 10
+    categories:
+      - business
+      - general
+    countries:
+      - us
+
+  alphavantage:
+    enabled: true
+    poll_interval_seconds: 30
+    topics:
+      - earnings
+      - financial_markets
+      - economy_macro
+
+  weather:
+    enabled: true
+    poll_interval_seconds: 300  # 5 minutes
+    alert_types:
+      - severe_thunderstorm
+      - tornado
+      - hurricane
+      - winter_storm
+
+alerts:
+  telegram:
+    enabled: true
+    alert_on_trade: true
+    alert_on_signal: false  # Too noisy, only alert on actual trades
+    alert_on_error: true
+    alert_on_pnl_milestone: true
+    pnl_milestones: [100, 250, 500, -50, -100, -200]
+    daily_digest_time: "20:00"  # UTC time
+
+monitoring:
+  prometheus:
+    enabled: true
+    port: 9090
+    scrape_interval_seconds: 15
+
+  grafana:
+    enabled: true
+    port: 3000
+
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+  format: json
+  file: /var/log/kalshi_trading/app.log
+  max_size_mb: 100
+  backup_count: 10
+
+database:
+  pool_size: 10
+  max_overflow: 20
+  pool_timeout: 30
+  echo: false  # Set to true for SQL query debugging
