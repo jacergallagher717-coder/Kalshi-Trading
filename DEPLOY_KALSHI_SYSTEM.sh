@@ -21,16 +21,16 @@ else
     echo "📥 Cloning from GitHub..."
     git clone https://github.com/jacergallagher717-coder/Kalshi-Trading.git
     cd Kalshi-Trading
+fi
 
+# Create .env file with credentials
+if [ ! -f ".env" ]; then
     echo ""
-    echo "⚠️  IMPORTANT: Copy your .env file to this directory!"
-    echo "    The .env file with your API keys is in /home/user/kalshi-trading-clean/.env"
+    echo "🔐 Setting up your API credentials..."
+    bash create_env.sh
+else
     echo ""
-    read -p "Have you copied .env to this directory? (y/n): " confirm
-    if [ "$confirm" != "y" ]; then
-        echo "❌ Deployment cancelled. Copy .env first."
-        exit 1
-    fi
+    echo "✅ .env file already exists, skipping credential setup"
 fi
 
 echo ""
