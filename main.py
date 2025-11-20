@@ -15,6 +15,7 @@ import os
 
 from src.api.kalshi_client import KalshiClient
 from src.monitors.news_monitor import NewsMonitor, NewsEvent
+from src.monitors.telegram_news_monitor import integrate_telegram_monitor
 from src.edge_detection.speed_arbitrage import SpeedArbitrage
 from src.edge_detection.weather_model import WeatherModel
 from src.edge_detection.pattern_detection import PatternDetector
@@ -316,6 +317,34 @@ class KalshiTradingSystem:
             asyncio.create_task(self.monitor_positions_loop()),
             asyncio.create_task(self.scan_weather_markets_loop()),
         ]
+
+        # Start Telegram news monitoring if configured
+        if os.getenv('TELEGRAM_API_ID'):
+            telegram_api_id = os.getenv('TELEGRAM_API_ID')
+            telegram_api_hash = os.getenv('TELEGRAM_API_HASH')
+            telegram_phone = os.getenv('TELEGRAM_PHONE')
+            telegram_channels_str = os.getenv('TELEGRAM_NEWS_CHANNELS', '')
+
+            if telegram_api_id and telegram_api_hash and telegram_phone and telegram_channels_str:
+                telegram_channels = [c.strip() for c in telegram_channels_str.split(',')]
+                logger.info(f"🎯 Starting Telegram news monitor for channels: {telegram_channels}")
+
+                telegram_news_task = asyncio.create_task(
+                    integrate_telegram_monitor(
+                        self.news_monitor,
+                        api_id=telegram_api_id,
+                        api_hash=telegram_api_hash,
+                        phone=telegram_phone,
+                        channels=telegram_channels
+                    )
+                )
+                tasks.append(telegram_news_task)
+
+                await self.send_alert(f"🎯 Telegram news monitor active for: {', '.join(telegram_channels)}")
+            else:
+                logger.warning("Telegram news monitoring configured but missing required fields")
+        else:
+            logger.info("Telegram news monitoring not configured (optional)")
 
         # Send startup alert
         await self.send_alert("🚀 Kalshi Trading System started")
