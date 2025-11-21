@@ -50,7 +50,7 @@ class LLMNewsAnalyzer:
             return
 
         self.client = anthropic.Anthropic(api_key=self.api_key)
-        logger.info("LLM news analyzer initialized (model: claude-haiku)")
+        logger.info("LLM news analyzer initialized (model: claude-3-5-haiku-20241022)")
 
     def analyze_news(
         self,
@@ -77,7 +77,7 @@ class LLMNewsAnalyzer:
 
             # Call Claude Haiku for fast analysis
             response = self.client.messages.create(
-                model="claude-haiku-4-20250514",
+                model="claude-3-5-haiku-20241022",
                 max_tokens=1000,
                 temperature=0,  # Deterministic for trading
                 messages=[{
