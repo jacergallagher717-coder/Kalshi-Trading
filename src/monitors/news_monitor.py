@@ -12,10 +12,19 @@ from dataclasses import dataclass
 from enum import Enum
 import re
 
-import tweepy
-from newsapi import NewsApiClient
 import httpx
 from cachetools import TTLCache
+
+# Optional imports - only needed if you use Twitter/NewsAPI
+try:
+    import tweepy
+except ImportError:
+    tweepy = None
+
+try:
+    from newsapi import NewsApiClient
+except ImportError:
+    NewsApiClient = None
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +202,10 @@ class TwitterMonitor:
         self.seen_tweets: Set[str] = set()
 
         # Initialize Tweepy client
+        if not tweepy:
+            logger.warning("tweepy not installed - Twitter monitoring disabled")
+            return
+
         if bearer_token:
             try:
                 self.client = tweepy.Client(bearer_token=bearer_token)
@@ -271,6 +284,10 @@ class NewsAPIMonitor:
         self.api_key = api_key
         self.client = None
         self.seen_articles: Set[str] = set()
+
+        if not NewsApiClient:
+            logger.warning("newsapi-python not installed - NewsAPI monitoring disabled")
+            return
 
         if api_key:
             try:
