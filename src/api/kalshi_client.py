@@ -4,11 +4,16 @@ Documentation: https://trading-api.readme.io/reference/getting-started
 """
 
 import time
+import base64
+import hashlib
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 import logging
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.backends import default_backend
 
 logger = logging.getLogger(__name__)
 
@@ -128,11 +133,20 @@ class KalshiClient:
         base_url: str = "https://demo-api.kalshi.co/trade-api/v2",
     ):
         self.api_key = api_key
-        self.api_secret = api_secret
         self.base_url = base_url.rstrip("/")
-        self.token = None
-        self.token_expiry = None
         self.client = httpx.Client(timeout=30.0)
+
+        # Parse RSA private key for request signing
+        try:
+            self.private_key = serialization.load_pem_private_key(
+                api_secret.encode('utf-8'),
+                password=None,
+                backend=default_backend()
+            )
+            logger.info("Successfully loaded RSA private key")
+        except Exception as e:
+            logger.error(f"Failed to load RSA private key: {e}")
+            raise
 
         # Rate limiting
         self.last_request_time = 0
@@ -147,41 +161,51 @@ class KalshiClient:
             time.sleep(self.min_request_interval - elapsed)
         self.last_request_time = time.time()
 
-    def authenticate(self) -> str:
+    def _sign_request(self, method: str, path: str, timestamp_ms: int, body: str = "") -> str:
         """
-        Authenticate with Kalshi API and get access token.
-        Token is cached and auto-refreshed when expired.
+        Sign API request using RSA-PSS with SHA-256.
+
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            path: Request path (e.g., /trade-api/v2/markets)
+            timestamp_ms: Current timestamp in milliseconds
+            body: Request body as string (empty for GET requests)
+
+        Returns:
+            Base64-encoded signature
         """
-        # Return cached token if still valid
-        if self.token and self.token_expiry and datetime.now() < self.token_expiry:
-            return self.token
+        # Create the message to sign: timestamp + method + path + body
+        message = f"{timestamp_ms}{method}{path}{body}"
 
-        logger.info("Authenticating with Kalshi API...")
+        # Sign with RSA-PSS padding and SHA-256
+        signature = self.private_key.sign(
+            message.encode('utf-8'),
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.DIGEST_LENGTH
+            ),
+            hashes.SHA256()
+        )
 
-        url = f"{self.base_url}/login"
-        payload = {"email": self.api_key, "password": self.api_secret}
+        # Return base64-encoded signature
+        return base64.b64encode(signature).decode('utf-8')
 
-        try:
-            response = self.client.post(url, json=payload)
-            response.raise_for_status()
-            data = response.json()
+    def _get_headers(self, method: str, path: str, body: str = "") -> Dict[str, str]:
+        """
+        Get headers with Kalshi API key authentication.
 
-            self.token = data["token"]
-            # Set expiry to 23 hours (tokens valid for 24h, refresh early)
-            self.token_expiry = datetime.now() + timedelta(hours=23)
+        Each request is signed with RSA private key using these headers:
+        - KALSHI-ACCESS-KEY: API key ID
+        - KALSHI-ACCESS-TIMESTAMP: Request timestamp in milliseconds
+        - KALSHI-ACCESS-SIGNATURE: RSA-PSS signature of request
+        """
+        timestamp_ms = int(time.time() * 1000)
+        signature = self._sign_request(method, path, timestamp_ms, body)
 
-            logger.info("Successfully authenticated with Kalshi")
-            return self.token
-
-        except httpx.HTTPError as e:
-            logger.error(f"Authentication failed: {e}")
-            raise
-
-    def _get_headers(self) -> Dict[str, str]:
-        """Get headers with valid auth token"""
-        token = self.authenticate()
         return {
-            "Authorization": f"Bearer {token}",
+            "KALSHI-ACCESS-KEY": self.api_key,
+            "KALSHI-ACCESS-TIMESTAMP": str(timestamp_ms),
+            "KALSHI-ACCESS-SIGNATURE": signature,
             "Content-Type": "application/json",
         }
 
@@ -200,7 +224,13 @@ class KalshiClient:
         self._rate_limit()
 
         url = f"{self.base_url}{endpoint}"
-        headers = self._get_headers()
+
+        # Prepare body for signature (empty string for GET requests)
+        import json as json_module
+        body_str = json_module.dumps(json) if json else ""
+
+        # Get signed headers
+        headers = self._get_headers(method.upper(), endpoint, body_str)
 
         try:
             response = self.client.request(
