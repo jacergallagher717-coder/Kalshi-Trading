@@ -1,5 +1,5 @@
 trading:
-  enabled: false  # Master kill switch - set to true when ready
+  enabled: true  # Master kill switch - set to true when ready
   max_position_size_usd: 500
   max_portfolio_heat: 0.20  # 20% of capital max in positions
   min_edge_threshold: 0.05  # 5% edge required to trade
