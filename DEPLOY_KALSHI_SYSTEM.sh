@@ -13,10 +13,10 @@ echo "✅ Demo mode (safe testing)"
 echo "✅ Paper trading (no real money yet)"
 echo ""
 
-# Check if running on server or local
-if [ -d "/home/user/kalshi-trading-clean" ]; then
-    echo "📦 Found local repository, using it..."
-    cd /home/user/kalshi-trading-clean
+# Check if we're already inside the repo
+if [ -f "docker-compose.yml" ] && [ -f "create_env.sh" ]; then
+    echo "📦 Already in repository directory, using current location..."
+    # Just stay here
 else
     echo "📥 Cloning from GitHub..."
     git clone https://github.com/jacergallagher717-coder/Kalshi-Trading.git

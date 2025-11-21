@@ -17,13 +17,18 @@ from src.api.kalshi_client import KalshiClient
 from src.monitors.news_monitor import NewsMonitor, NewsEvent
 from src.monitors.telegram_news_monitor import integrate_telegram_monitor
 from src.edge_detection.speed_arbitrage import SpeedArbitrage
-from src.edge_detection.weather_model import WeatherModel
 from src.edge_detection.pattern_detection import PatternDetector
 from src.execution.trade_executor import TradeExecutor
 from src.execution.position_manager import PositionManager
 from src.alerts.telegram_bot import TelegramAlerter
 from src.monitoring.metrics import MetricsCollector, start_metrics_server
 from src.database.models import Database, NewsEvent as DBNewsEvent, Signal as DBSignal
+
+# Optional imports - weather model requires scipy
+try:
+    from src.edge_detection.weather_model import WeatherModel
+except ImportError:
+    WeatherModel = None
 
 # Configure logging
 logging.basicConfig(
@@ -107,7 +112,10 @@ class KalshiTradingSystem:
             self.speed_arb = SpeedArbitrage(strategies['speed_arbitrage'])
 
         if strategies.get('weather_model', {}).get('enabled', False):
-            self.weather_model = WeatherModel(strategies['weather_model'])
+            if WeatherModel:
+                self.weather_model = WeatherModel(strategies['weather_model'])
+            else:
+                logger.warning("WeatherModel disabled - scipy not installed")
 
         if strategies.get('pattern_detection', {}).get('enabled', False):
             self.pattern_detector = PatternDetector(strategies['pattern_detection'])
