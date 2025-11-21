@@ -34,6 +34,11 @@ try:
 except ImportError:
     WeatherModel = None
 
+try:
+    from src.edge_detection.llm_analyzer import LLMNewsAnalyzer
+except ImportError:
+    LLMNewsAnalyzer = None
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -109,6 +114,7 @@ class KalshiTradingSystem:
         self.speed_arb = None
         self.weather_model = None
         self.pattern_detector = None
+        self.llm_analyzer = None
 
         strategies = self.config.get('strategies', {})
 
@@ -126,6 +132,16 @@ class KalshiTradingSystem:
                 self.pattern_detector = PatternDetector(strategies['pattern_detection'])
             else:
                 logger.warning("PatternDetector disabled - numpy not installed")
+
+        # Initialize LLM analyzer for qualitative news analysis (fallback when regex fails)
+        llm_enabled = strategies.get('llm_analysis', {}).get('enabled', True)  # Default ON
+        if llm_enabled and LLMNewsAnalyzer:
+            self.llm_analyzer = LLMNewsAnalyzer(
+                api_key=os.getenv('ANTHROPIC_API_KEY'),
+                enabled=llm_enabled
+            )
+        elif llm_enabled:
+            logger.warning("LLMNewsAnalyzer disabled - anthropic library not installed")
 
         # Initialize trade executor
         trading_config = self.config.get('trading', {})
@@ -200,8 +216,29 @@ class KalshiTradingSystem:
             # Get current prices
             market_prices = {m.ticker: m.last_price or 0.50 for m in markets}
 
-            # Generate signals
+            # FAST PATH: Try regex-based speed arbitrage first
             signals = self.speed_arb.analyze_event(event, market_tickers, market_prices)
+
+            # FALLBACK: If regex found nothing, try LLM analysis for qualitative news
+            if not signals and self.llm_analyzer:
+                logger.info(f"Speed arb found no signals - trying LLM analysis for: {event.headline[:80]}")
+
+                llm_analysis = self.llm_analyzer.analyze_news(event, market_tickers)
+
+                if llm_analysis:
+                    # Get current price for the identified market
+                    ticker = llm_analysis['ticker']
+                    current_price = market_prices.get(ticker)
+
+                    # Create trade signal from LLM analysis
+                    signal = self.llm_analyzer.create_trade_signal(
+                        llm_analysis,
+                        event,
+                        current_price
+                    )
+
+                    signals = [signal]
+                    logger.info(f"LLM generated signal: {signal}")
 
             # Process each signal
             for signal in signals:

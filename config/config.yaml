@@ -61,6 +61,10 @@ strategies:
       min_volume_threshold: 10000
       min_spread_threshold: 0.05
 
+  llm_analysis:
+    enabled: true  # LLM fallback for qualitative news (when regex fails)
+    # Uses Claude Haiku for speed - catches "inflation stalled" type news
+
 news_monitoring:
   twitter:
     enabled: true
