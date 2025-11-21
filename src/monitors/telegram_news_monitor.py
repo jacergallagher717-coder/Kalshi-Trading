@@ -309,7 +309,8 @@ async def integrate_telegram_monitor(
         api_id=api_id,
         api_hash=api_hash,
         phone=phone,
-        channels=channels
+        channels=channels,
+        session_name="config/bossbot_session"
     )
 
     # Register callback to feed events to main news monitor
