@@ -166,7 +166,10 @@ class KalshiClient:
             logger.info("Successfully loaded RSA private key")
         except Exception as e:
             logger.error(f"Failed to load RSA private key: {e}")
-            logger.error(f"Key format check - has newlines: {chr(10) in api_secret}, has escaped newlines: {'\\n' in api_secret}")
+            escaped_newline = '\\n'
+            has_newlines = '\n' in api_secret
+            has_escaped = escaped_newline in api_secret
+            logger.error(f"Key format check - has newlines: {has_newlines}, has escaped newlines: {has_escaped}")
             raise
 
         # Rate limiting
