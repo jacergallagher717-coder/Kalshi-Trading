@@ -137,15 +137,36 @@ class KalshiClient:
         self.client = httpx.Client(timeout=30.0)
 
         # Parse RSA private key for request signing
+        # Handle case where .env strips newlines - restore PEM format
         try:
+            # If key doesn't have newlines, it needs to be reformatted
+            if '\\n' in api_secret:
+                # Handle escaped newlines
+                key_data = api_secret.replace('\\n', '\n')
+            elif '\n' not in api_secret and '-----BEGIN' in api_secret:
+                # Key is on one line, need to add newlines
+                # Extract the base64 content between headers
+                key_data = api_secret.replace('-----BEGIN RSA PRIVATE KEY-----', '-----BEGIN RSA PRIVATE KEY-----\n')
+                key_data = key_data.replace('-----END RSA PRIVATE KEY-----', '\n-----END RSA PRIVATE KEY-----')
+                # Add newlines every 64 characters in the base64 content
+                lines = key_data.split('\n')
+                if len(lines) == 3:  # header, content, footer
+                    content = lines[1]
+                    formatted_content = '\n'.join([content[i:i+64] for i in range(0, len(content), 64)])
+                    key_data = f"{lines[0]}\n{formatted_content}\n{lines[2]}"
+            else:
+                # Key already has proper format
+                key_data = api_secret
+
             self.private_key = serialization.load_pem_private_key(
-                api_secret.encode('utf-8'),
+                key_data.encode('utf-8'),
                 password=None,
                 backend=default_backend()
             )
             logger.info("Successfully loaded RSA private key")
         except Exception as e:
             logger.error(f"Failed to load RSA private key: {e}")
+            logger.error(f"Key format check - has newlines: {chr(10) in api_secret}, has escaped newlines: {'\\n' in api_secret}")
             raise
 
         # Rate limiting
