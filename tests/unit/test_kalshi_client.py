@@ -41,7 +41,7 @@ class TestKalshiClient:
 
     def test_get_markets(self, mock_client):
         """Test fetching markets"""
-        # Mock response
+        # Mock response (Kalshi API returns prices in cents: 0-100)
         mock_response = Mock()
         mock_response.json.return_value = {
             "markets": [
@@ -49,7 +49,9 @@ class TestKalshiClient:
                     "ticker": "INX-23DEC29-T4700",
                     "title": "S&P 500 above 4700",
                     "status": "open",
-                    "last_price": 0.65,
+                    "last_price": 65,  # Kalshi returns cents (0-100)
+                    "yes_bid": 64,
+                    "yes_ask": 66,
                 }
             ]
         }
@@ -63,7 +65,10 @@ class TestKalshiClient:
 
             assert len(markets) == 1
             assert markets[0].ticker == "INX-23DEC29-T4700"
+            # Market class converts cents to probability
             assert markets[0].last_price == 0.65
+            assert markets[0].yes_bid == 0.64
+            assert markets[0].yes_ask == 0.66
 
     def test_place_order_validation(self, mock_client):
         """Test order validation"""

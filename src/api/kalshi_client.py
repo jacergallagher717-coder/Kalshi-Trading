@@ -28,13 +28,19 @@ class Market:
         self.close_time = data.get("close_time")
         self.expiration_time = data.get("expiration_time")
         self.status = data.get("status")
-        self.yes_bid = data.get("yes_bid", 0)
-        self.yes_ask = data.get("yes_ask", 0)
-        self.no_bid = data.get("no_bid", 0)
-        self.no_ask = data.get("no_ask", 0)
+
+        # Convert Kalshi prices from cents (0-100) to probability (0.0-1.0)
+        self.yes_bid = data.get("yes_bid", 0) / 100.0
+        self.yes_ask = data.get("yes_ask", 0) / 100.0
+        self.no_bid = data.get("no_bid", 0) / 100.0
+        self.no_ask = data.get("no_ask", 0) / 100.0
         self.volume = data.get("volume", 0)
         self.open_interest = data.get("open_interest", 0)
-        self.last_price = data.get("last_price")
+
+        # Convert last_price from cents to probability
+        raw_last_price = data.get("last_price")
+        self.last_price = raw_last_price / 100.0 if raw_last_price is not None else None
+
         self.raw_data = data
 
     def __repr__(self):
