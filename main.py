@@ -209,8 +209,8 @@ class KalshiTradingSystem:
     async def generate_speed_arb_signals(self, event: NewsEvent):
         """Generate speed arbitrage signals from news event"""
         try:
-            # Get available markets
-            markets = self.kalshi.get_markets(status="open")
+            # Get available markets (fetch all, not just first 100)
+            markets = self.kalshi.get_markets(status="open", limit=1000)
             market_tickers = [m.ticker for m in markets]
 
             # Get current prices
