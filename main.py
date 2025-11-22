@@ -18,6 +18,7 @@ from src.monitors.news_monitor import NewsMonitor, NewsEvent
 from src.monitors.telegram_news_monitor import integrate_telegram_monitor
 from src.edge_detection.speed_arbitrage import SpeedArbitrage
 from src.execution.trade_executor import TradeExecutor
+from src.database.models import Market as MarketModel
 from src.execution.position_manager import PositionManager
 from src.alerts.telegram_bot import TelegramAlerter
 from src.monitoring.metrics import MetricsCollector, start_metrics_server
@@ -170,6 +171,34 @@ class KalshiTradingSystem:
 
         logger.info("Kalshi Trading System initialized")
 
+    def _store_markets(self, markets):
+        """Store/update markets in database"""
+        session = self.db.get_session()
+        try:
+            for market in markets:
+                # Use merge to insert or update
+                db_market = session.merge(MarketModel(
+                    ticker=market.ticker,
+                    title=market.title,
+                    category=market.category,
+                    close_date=market.close_time,
+                    status=market.status,
+                    volume_24h=market.volume,
+                    last_price=market.last_price,
+                    yes_bid=market.yes_bid,
+                    yes_ask=market.yes_ask,
+                    no_bid=market.no_bid,
+                    no_ask=market.no_ask,
+                    open_interest=market.open_interest,
+                ))
+            session.commit()
+            logger.debug(f"Stored/updated {len(markets)} markets in database")
+        except Exception as e:
+            logger.error(f"Error storing markets: {e}")
+            session.rollback()
+        finally:
+            session.close()
+
     async def on_news_event(self, event: NewsEvent):
         """Callback for when a news event is detected"""
         logger.info(f"Processing news event: {event.headline[:100]}")
@@ -212,6 +241,9 @@ class KalshiTradingSystem:
             # Get available markets (fetch all, not just first 100)
             markets = self.kalshi.get_markets(status="open", limit=1000)
             market_tickers = [m.ticker for m in markets]
+
+            # Store/update markets in database before creating signals
+            self._store_markets(markets)
 
             # Get current prices
             market_prices = {m.ticker: m.last_price or 0.50 for m in markets}
