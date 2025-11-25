@@ -1,0 +1,71 @@
+{
+  "last_update": "2025-11-25T00:07:42.935275",
+  "consensus": {
+    "CPI": {
+      "value": 2.4,
+      "description": "Year-over-year CPI inflation (%)",
+      "source": "default",
+      "last_release": "2024-11-13",
+      "next_release": "2024-12-11"
+    },
+    "CPI_CORE": {
+      "value": 3.3,
+      "description": "Core CPI (excluding food and energy) (%)",
+      "source": "default",
+      "last_release": "2024-11-13",
+      "next_release": "2024-12-11"
+    },
+    "UNEMPLOYMENT": {
+      "value": 4.1,
+      "description": "Unemployment rate (%)",
+      "source": "default",
+      "last_release": "2024-11-01",
+      "next_release": "2024-12-06"
+    },
+    "NFP": {
+      "value": 150000,
+      "description": "Nonfarm Payrolls (monthly change)",
+      "source": "default",
+      "last_release": "2024-11-01",
+      "next_release": "2024-12-06"
+    },
+    "GDP": {
+      "value": 2.8,
+      "description": "Real GDP growth (quarter-over-quarter annualized %)",
+      "source": "default",
+      "last_release": "2024-10-30",
+      "next_release": "2024-12-20"
+    },
+    "FED_RATE": {
+      "value": 4.75,
+      "description": "Federal Funds Rate upper bound (%)",
+      "source": "default",
+      "last_release": "2024-11-07",
+      "next_release": "2024-12-18"
+    },
+    "RETAIL_SALES": {
+      "value": 0.3,
+      "description": "Retail Sales month-over-month change (%)",
+      "source": "default",
+      "last_release": "2024-11-15",
+      "next_release": "2024-12-17"
+    },
+    "PPI": {
+      "value": 2.3,
+      "description": "Producer Price Index year-over-year (%)",
+      "source": "default",
+      "last_release": "2024-11-14",
+      "next_release": "2024-12-12"
+    }
+  },
+  "notes": {
+    "update_instructions": "Update these values before major economic releases",
+    "sources": [
+      "TradingEconomics.com - Consensus tab",
+      "Investing.com - Economic Calendar",
+      "Bloomberg Terminal",
+      "Fed website for FOMC"
+    ],
+    "manual_override": "You can manually edit this file to override consensus values before releases"
+  }
+}

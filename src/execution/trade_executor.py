@@ -6,6 +6,7 @@ Receives signals and executes trades with proper risk management and validation.
 import asyncio
 import hashlib
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from dataclasses import dataclass
 from src.edge_detection.speed_arbitrage import TradeSignal
 from src.api.kalshi_client import KalshiClient, Order
 from src.database.models import Trade, Signal as DBSignal, Position as DBPosition
+from src.execution.paper_trader import PaperTrader
 
 logger = logging.getLogger(__name__)
 
@@ -305,6 +307,15 @@ class TradeExecutor:
         # Master kill switch
         self.trading_enabled = config.get("enabled", False)
 
+        # Paper trading mode
+        self.paper_trading = os.getenv("PAPER_TRADING_MODE", "true").lower() == "true"
+        self.paper_trader = PaperTrader(config) if self.paper_trading else None
+
+        if self.paper_trading:
+            logger.warning("📝 PAPER TRADING MODE ACTIVE - No real money at risk!")
+        else:
+            logger.critical("💰 LIVE TRADING MODE - Real money will be traded!")
+
         logger.info(f"Trade executor initialized. Trading enabled: {self.trading_enabled}")
 
     async def execute_signal(self, signal: TradeSignal) -> Optional[Trade]:
@@ -365,9 +376,14 @@ class TradeExecutor:
                 return None
 
         # Get current balance and exposure
-        balance_info = self.kalshi.get_balance()
-        current_balance = balance_info.get("balance", 0)
-        current_exposure = self._calculate_current_exposure()
+        if self.paper_trading:
+            balance_info = self.paper_trader.get_balance()
+            current_balance = balance_info.get("balance", 10000)
+            current_exposure = balance_info.get("total_exposure", 0)
+        else:
+            balance_info = self.kalshi.get_balance()
+            current_balance = balance_info.get("balance", 0)
+            current_exposure = self._calculate_current_exposure()
 
         # Calculate position size
         quantity = PositionSizer.calculate_position_size(
@@ -390,19 +406,31 @@ class TradeExecutor:
             logger.error(f"Order validation failed: {rejection_reason}")
             return None
 
-        # Place order
+        # Place order (real or paper)
         try:
+            mode_str = "PAPER" if self.paper_trading else "LIVE"
             logger.info(
-                f"Placing order: {quantity} {signal.side} @ {limit_price}¢ on {signal.ticker}"
+                f"[{mode_str}] Placing order: {quantity} {signal.side} @ {limit_price}¢ on {signal.ticker}"
             )
 
-            order = self.kalshi.place_order(
-                ticker=signal.ticker,
-                side=signal.side,
-                quantity=quantity,
-                limit_price=limit_price,
-                order_type="limit",
-            )
+            if self.paper_trading:
+                # Paper trading - simulate execution
+                order = self.paper_trader.place_order(
+                    ticker=signal.ticker,
+                    side=signal.side,
+                    quantity=quantity,
+                    limit_price=limit_price,
+                    order_type="limit",
+                ).to_order()
+            else:
+                # Live trading - real execution
+                order = self.kalshi.place_order(
+                    ticker=signal.ticker,
+                    side=signal.side,
+                    quantity=quantity,
+                    limit_price=limit_price,
+                    order_type="limit",
+                )
 
             if not order:
                 logger.error("Order placement failed")
@@ -420,13 +448,14 @@ class TradeExecutor:
             self.recent_trades.append(datetime.now())
 
             # Send alert
+            prefix = "📝 PAPER" if self.paper_trading else "✅ LIVE"
             await self._send_alert(
-                f"✅ Trade executed: {quantity} {signal.side} {signal.ticker} @ {limit_price}¢\n"
+                f"{prefix} Trade executed: {quantity} {signal.side} {signal.ticker} @ {limit_price}¢\n"
                 f"Edge: {signal.edge_percentage:.1%}, Confidence: {signal.confidence:.2f}\n"
                 f"Reason: {signal.reasoning[:100]}"
             )
 
-            logger.info(f"Trade executed successfully: {order}")
+            logger.info(f"[{mode_str}] Trade executed successfully: {order}")
             return trade
 
         except Exception as e:

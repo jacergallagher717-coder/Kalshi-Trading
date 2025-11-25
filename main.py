@@ -22,6 +22,7 @@ from src.execution.position_manager import PositionManager
 from src.alerts.telegram_bot import TelegramAlerter
 from src.monitoring.metrics import MetricsCollector, start_metrics_server
 from src.database.models import Database, NewsEvent as DBNewsEvent, Signal as DBSignal
+from src.data.market_cache import get_market_cache
 
 # Optional imports - pattern detection and weather model require numpy/scipy
 try:
@@ -74,6 +75,10 @@ class KalshiTradingSystem:
             api_secret=os.getenv('KALSHI_API_SECRET'),
             base_url=os.getenv('KALSHI_BASE_URL'),
         )
+
+        # Initialize market cache for fast lookups
+        self.market_cache = get_market_cache(self.kalshi)
+        logger.info("Market cache initialized - will refresh every 5 minutes")
 
         # Initialize Telegram bot
         telegram_config = self.config.get('alerts', {}).get('telegram', {})
@@ -209,12 +214,16 @@ class KalshiTradingSystem:
     async def generate_speed_arb_signals(self, event: NewsEvent):
         """Generate speed arbitrage signals from news event"""
         try:
-            # Get available markets (fetch all, not just first 100)
-            markets = self.kalshi.get_markets(status="open", limit=1000)
-            market_tickers = [m.ticker for m in markets]
+            # Use cached markets for instant lookup (no API call!)
+            market_tickers = self.market_cache.get_all_tickers()
+            market_prices = self.market_cache.get_all_prices()
 
-            # Get current prices
-            market_prices = {m.ticker: m.last_price or 0.50 for m in markets}
+            # Log cache usage
+            cache_info = self.market_cache.get_cache_info()
+            logger.debug(
+                f"Using market cache: {cache_info['total_markets']} markets, "
+                f"age: {cache_info['age_seconds']:.0f}s"
+            )
 
             # FAST PATH: Try regex-based speed arbitrage first
             signals = self.speed_arb.analyze_event(event, market_tickers, market_prices)
@@ -365,6 +374,7 @@ class KalshiTradingSystem:
 
         # Start all async tasks
         tasks = [
+            asyncio.create_task(self.market_cache.start()),  # Background market refresh
             asyncio.create_task(self.news_monitor.start()),
             asyncio.create_task(self.monitor_positions_loop()),
             asyncio.create_task(self.scan_weather_markets_loop()),

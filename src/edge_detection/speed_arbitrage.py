@@ -10,6 +10,7 @@ from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 
 from src.monitors.news_monitor import NewsEvent, EventType
+from src.data.consensus_fetcher import get_consensus_fetcher
 
 logger = logging.getLogger(__name__)
 
@@ -49,19 +50,35 @@ class EconomicDataParser:
 
     @staticmethod
     def extract_cpi_data(text: str) -> Optional[Dict]:
-        """Extract CPI data from news text"""
-        # Patterns like "CPI at 3.2%", "inflation rose to 4.5%"
+        """Extract CPI data from news text with enhanced patterns + expected value"""
+        # Enhanced patterns to handle more variations including BossBot format
         patterns = [
-            r"cpi\s+(?:at|of|is|rose to|fell to)\s+([\d.]+)%",
-            r"inflation\s+(?:at|is|rose to|fell to)\s+([\d.]+)%",
-            r"consumer price index\s+(?:at|is)\s+([\d.]+)%",
+            r"cpi\s*:?\s+([\d.]+)%",  # "CPI: 3.2%" or "CPI 3.2%"
+            r"cpi\s+(?:at|of|is|rose to|fell to|comes in at)\s+([\d.]+)%",
+            r"inflation\s*:?\s+([\d.]+)%",
+            r"inflation\s+(?:at|is|rose to|fell to|comes in at)\s+([\d.]+)%",
+            r"consumer price index\s*:?\s*([\d.]+)%",
+            r"core\s+cpi\s*:?\s+([\d.]+)%",
         ]
 
         for pattern in patterns:
             match = re.search(pattern, text.lower())
             if match:
-                value = float(match.group(1))
-                return {"metric": "CPI", "value": value, "unit": "percent"}
+                actual = float(match.group(1))
+
+                # Try to extract expected value ("vs est 3.0%")
+                expected = None
+                expected_patterns = [
+                    r"(?:vs|versus|v)\s+(?:est|expected|forecast|consensus)\s+([\d.]+)%",
+                    r"(?:expected|est|forecast)\s+([\d.]+)%",
+                ]
+                for exp_pattern in expected_patterns:
+                    exp_match = re.search(exp_pattern, text.lower())
+                    if exp_match:
+                        expected = float(exp_match.group(1))
+                        break
+
+                return {"metric": "CPI", "value": actual, "expected": expected, "unit": "percent"}
 
         return None
 
@@ -207,6 +224,10 @@ class SpeedArbitrage:
         self.min_edge = config.get("min_edge", 0.05)
         self.latency_target = config.get("latency_target_seconds", 10)
 
+        # Initialize consensus data fetcher
+        self.consensus_fetcher = get_consensus_fetcher()
+        self.consensus_fetcher.print_summary()
+
         logger.info(
             f"Speed arbitrage initialized: min_confidence={self.min_confidence}, "
             f"min_edge={self.min_edge}"
@@ -243,24 +264,35 @@ class SpeedArbitrage:
             event_data = EconomicDataParser.extract_economic_data(event.content)
 
             if event_data:
-                # For demo: assume expected values (in production, fetch from consensus)
-                expected_values = {
-                    "CPI": 3.0,
-                    "UNEMPLOYMENT": 3.8,
-                    "GDP": 2.5,
-                }
-
                 metric = event_data["metric"]
                 actual = event_data["value"]
-                expected = expected_values.get(metric, actual)
+
+                # Prefer expected value from news text (most accurate & timely)
+                # If not in news, fall back to cached consensus
+                expected = event_data.get("expected")  # From BossBot "vs est X%"
+
+                if expected is None:
+                    # Fall back to consensus fetcher
+                    expected = self.consensus_fetcher.get_consensus(metric)
+                    source = "cached consensus"
+                else:
+                    source = "news text"
+
+                if expected is None:
+                    logger.warning(
+                        f"No consensus data for {metric}, using actual value (no surprise)"
+                    )
+                    expected = actual  # Fallback: assume no surprise
+                    source = "fallback (no surprise)"
 
                 expected_impact = EconomicDataParser.calculate_surprise_impact(
                     metric, actual, expected
                 )
 
+                surprise = actual - expected
                 logger.info(
-                    f"Economic data: {metric}={actual}% (expected {expected}%), "
-                    f"impact={expected_impact:.2%}"
+                    f"Economic data: {metric}={actual}% (expected: {expected}% from {source}), "
+                    f"surprise={surprise:+.2f}, impact={expected_impact:.2%}"
                 )
 
         # Step 3: Generate signals for each related market
