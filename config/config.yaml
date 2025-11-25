@@ -24,6 +24,7 @@ strategies:
     min_confidence: 0.70
     min_edge: 0.05
     max_position_size: 500
+    auto_update_consensus: true  # Automatically fetch consensus every 12 hours
 
   weather_model:
     enabled: true

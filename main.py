@@ -23,6 +23,7 @@ from src.alerts.telegram_bot import TelegramAlerter
 from src.monitoring.metrics import MetricsCollector, start_metrics_server
 from src.database.models import Database, NewsEvent as DBNewsEvent, Signal as DBSignal
 from src.data.market_cache import get_market_cache
+from src.data.consensus_scraper import start_auto_update
 
 # Optional imports - pattern detection and weather model require numpy/scipy
 try:
@@ -379,6 +380,14 @@ class KalshiTradingSystem:
             asyncio.create_task(self.monitor_positions_loop()),
             asyncio.create_task(self.scan_weather_markets_loop()),
         ]
+
+        # Start automated consensus data updates (every 12 hours)
+        if self.speed_arb and self.speed_arb.consensus_fetcher:
+            logger.info("🔄 Starting automated consensus updates (every 12 hours)")
+            consensus_update_task = asyncio.create_task(
+                start_auto_update(self.speed_arb.consensus_fetcher)
+            )
+            tasks.append(consensus_update_task)
 
         # Start Telegram news monitoring if configured
         if os.getenv('TELEGRAM_API_ID'):
