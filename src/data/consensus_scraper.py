@@ -61,6 +61,7 @@ class ConsensusScraper:
             ('GDP', 'gdp-growth-annual'),
             ('NFP', 'non-farm-payrolls'),
             ('RETAIL_SALES', 'retail-sales-mom'),
+            ('JOBLESS_CLAIMS', 'initial-jobless-claims'),
         ]
 
         updated_count = 0

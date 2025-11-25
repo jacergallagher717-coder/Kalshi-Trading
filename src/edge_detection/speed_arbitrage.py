@@ -47,6 +47,7 @@ class EconomicDataParser:
     CPI_IMPACT_PER_TENTH = 0.05  # 5% market move per 0.1% CPI surprise
     UNEMPLOYMENT_IMPACT = 0.08  # 8% market move per 0.1% unemployment surprise
     GDP_IMPACT = 0.03  # 3% market move per 0.1% GDP surprise
+    JOBLESS_CLAIMS_IMPACT = 0.04  # 4% market move per 10k claims surprise
 
     @staticmethod
     def extract_cpi_data(text: str) -> Optional[Dict]:
@@ -114,6 +115,47 @@ class EconomicDataParser:
 
         return None
 
+    @staticmethod
+    def extract_jobless_claims_data(text: str) -> Optional[Dict]:
+        """Extract initial jobless claims data from news text"""
+        patterns = [
+            r"(?:initial\s+)?(?:jobless\s+)?claims\s*:?\s*([\d,]+)k?",
+            r"(?:initial\s+)?claims\s+(?:at|came in at|rose to|fell to)\s*([\d,]+)k?",
+            r"unemployment\s+claims\s*:?\s*([\d,]+)k?",
+            r"weekly\s+claims\s*:?\s*([\d,]+)k?",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, text.lower())
+            if match:
+                # Extract number and remove commas
+                value_str = match.group(1).replace(",", "")
+                value = float(value_str)
+
+                # Convert to thousands if needed (e.g., "235k" or "235")
+                # If value is less than 1000, it's already in thousands
+                if value < 1000:
+                    value = value * 1000
+
+                # Try to extract expected value
+                expected = None
+                expected_patterns = [
+                    r"(?:vs|versus|v)\s+(?:est|expected|forecast|consensus)\s+([\d,]+)k?",
+                    r"(?:expected|est|forecast)\s+([\d,]+)k?",
+                ]
+                for exp_pattern in expected_patterns:
+                    exp_match = re.search(exp_pattern, text.lower())
+                    if exp_match:
+                        exp_val = float(exp_match.group(1).replace(",", ""))
+                        if exp_val < 1000:
+                            exp_val = exp_val * 1000
+                        expected = exp_val
+                        break
+
+                return {"metric": "JOBLESS_CLAIMS", "value": value, "expected": expected, "unit": "count"}
+
+        return None
+
     @classmethod
     def extract_economic_data(cls, text: str) -> Optional[Dict]:
         """Extract any economic data from text"""
@@ -122,6 +164,7 @@ class EconomicDataParser:
             cls.extract_cpi_data,
             cls.extract_unemployment_data,
             cls.extract_gdp_data,
+            cls.extract_jobless_claims_data,
         ]:
             result = parser(text)
             if result:
@@ -153,6 +196,11 @@ class EconomicDataParser:
             # Higher GDP = less likely recession
             return -surprise * 10 * cls.GDP_IMPACT  # Negative because inverse
 
+        elif metric == "JOBLESS_CLAIMS":
+            # Higher claims = more unemployment = recession risk
+            # Surprise is in thousands, normalize to 10k increments
+            return (surprise / 10000) * cls.JOBLESS_CLAIMS_IMPACT
+
         return 0.0
 
 
@@ -166,6 +214,8 @@ class MarketMatcher:
         "unemployment": [r"UNEMP-\d{2}[A-Z]{3}\d{2}", r"JOBS-\d{2}[A-Z]{3}\d{2}"],
         "gdp": [r"GDP-\d{2}Q\d"],
         "nonfarm": [r"NFP-\d{2}[A-Z]{3}\d{2}"],
+        "jobless": [r"CLAIMS-\d{2}[A-Z]{3}\d{2}", r"JOBLESS-\d{2}[A-Z]{3}\d{2}"],
+        "claims": [r"CLAIMS-\d{2}[A-Z]{3}\d{2}", r"JOBLESS-\d{2}[A-Z]{3}\d{2}"],
         "fed": [r"FED-\d{2}[A-Z]{3}\d{2}", r"RATE-\d{2}[A-Z]{3}\d{2}"],
         "hurricane": [r"HURRICANE-"],
         "temperature": [r"TEMP-", r"HOT-", r"COLD-"],

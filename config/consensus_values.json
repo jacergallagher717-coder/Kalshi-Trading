@@ -56,6 +56,13 @@
       "source": "default",
       "last_release": "2024-11-14",
       "next_release": "2024-12-12"
+    },
+    "JOBLESS_CLAIMS": {
+      "value": 230000,
+      "description": "Initial Jobless Claims (weekly, in thousands)",
+      "source": "default",
+      "last_release": "2024-11-21",
+      "next_release": "2024-11-28"
     }
   },
   "notes": {

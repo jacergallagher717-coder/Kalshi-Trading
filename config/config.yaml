@@ -2,7 +2,7 @@ trading:
   enabled: true  # Master kill switch - set to true when ready
   max_position_size_usd: 500
   max_portfolio_heat: 0.20  # 20% of capital max in positions
-  min_edge_threshold: 0.05  # 5% edge required to trade
+  min_edge_threshold: 0.03  # 3% edge required to trade (lowered from 0.05)
   max_daily_loss: 1000
   position_timeout_hours: 168  # Auto-close after 7 days
   max_open_positions: 10
@@ -21,15 +21,15 @@ strategies:
   speed_arbitrage:
     enabled: true
     latency_target_seconds: 10
-    min_confidence: 0.70
-    min_edge: 0.05
+    min_confidence: 0.60  # Lowered from 0.70 to capture more trades
+    min_edge: 0.03  # Lowered from 0.05 to capture medium-edge opportunities
     max_position_size: 500
     auto_update_consensus: true  # Automatically fetch consensus every 12 hours
 
   weather_model:
     enabled: true
     forecast_horizon_days: 14
-    min_edge: 0.08
+    min_edge: 0.04  # Lowered from 0.08 to capture more weather opportunities
     update_frequency_minutes: 60
     data_sources:
       - noaa_gfs
@@ -86,6 +86,9 @@ news_monitoring:
         - Fed
         - interest rate
         - jobs report
+        - jobless claims
+        - initial claims
+        - unemployment claims
       political:
         - Congress
         - Senate
