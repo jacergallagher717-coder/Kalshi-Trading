@@ -55,7 +55,8 @@ class LLMNewsAnalyzer:
     def analyze_news(
         self,
         event: NewsEvent,
-        available_markets: List[str]
+        available_markets: List[str],
+        market_titles: Optional[Dict[str, str]] = None
     ) -> Optional[Dict]:
         """
         Analyze news event and identify trading opportunities.
@@ -63,6 +64,7 @@ class LLMNewsAnalyzer:
         Args:
             event: News event to analyze
             available_markets: List of Kalshi market tickers
+            market_titles: Optional dict of {ticker: title} for better context
 
         Returns:
             Dict with market, direction, confidence, reasoning
@@ -73,7 +75,7 @@ class LLMNewsAnalyzer:
 
         try:
             # Build prompt with news and available markets
-            prompt = self._build_prompt(event, available_markets)
+            prompt = self._build_prompt(event, available_markets, market_titles)
 
             # Call Claude Haiku for fast analysis
             response = self.client.messages.create(
@@ -101,17 +103,29 @@ class LLMNewsAnalyzer:
             logger.error(f"LLM analysis failed: {e}")
             return None
 
-    def _build_prompt(self, event: NewsEvent, available_markets: List[str]) -> str:
+    def _build_prompt(
+        self,
+        event: NewsEvent,
+        available_markets: List[str],
+        market_titles: Optional[Dict[str, str]] = None
+    ) -> str:
         """Build analysis prompt for Claude"""
 
-        # Filter markets to Fed/economic related (reduce noise)
-        relevant_market_patterns = ['FED', 'RATE', 'CPI', 'INF', 'GDP', 'UNEMP', 'JOBS', 'NFP', 'FOMC']
-        filtered_markets = [
-            m for m in available_markets
-            if any(pattern in m.upper() for pattern in relevant_market_patterns)
-        ]
-
-        market_list = "\n".join(filtered_markets[:50])  # Limit to 50 to save tokens
+        # If market titles provided, use them for better context
+        if market_titles:
+            # Format as "TICKER: Title"
+            market_list = "\n".join([
+                f"{ticker}: {market_titles.get(ticker, '')}"
+                for ticker in available_markets[:30]  # Limit to 30 to save tokens
+            ])
+        else:
+            # Fall back to old behavior - filter to economic markets
+            relevant_market_patterns = ['FED', 'RATE', 'CPI', 'INF', 'GDP', 'UNEMP', 'JOBS', 'NFP', 'FOMC']
+            filtered_markets = [
+                m for m in available_markets
+                if any(pattern in m.upper() for pattern in relevant_market_patterns)
+            ]
+            market_list = "\n".join(filtered_markets[:50])
 
         return f"""You are a quantitative trading analyst specializing in prediction markets.
 
@@ -121,7 +135,7 @@ Content: {event.content}
 Source: {event.source}
 Keywords: {', '.join(event.keywords)}
 
-AVAILABLE KALSHI MARKETS:
+AVAILABLE KALSHI MARKETS (pre-filtered by keyword matching):
 {market_list if market_list else "No relevant markets found"}
 
 TASK:

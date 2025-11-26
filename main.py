@@ -215,25 +215,51 @@ class KalshiTradingSystem:
     async def generate_speed_arb_signals(self, event: NewsEvent):
         """Generate speed arbitrage signals from news event"""
         try:
-            # Use cached markets for instant lookup (no API call!)
-            market_tickers = self.market_cache.get_all_tickers()
-            market_prices = self.market_cache.get_all_prices()
+            # PHASE 2: Universal BossBot scanning with smart LLM gating
+            # Extract keywords from news text (FREE - no API call)
+            from src.utils.keyword_extractor import KeywordExtractor
+            from src.utils.market_searcher import UniversalMarketSearcher
 
-            # Log cache usage
-            cache_info = self.market_cache.get_cache_info()
-            logger.debug(
-                f"Using market cache: {cache_info['total_markets']} markets, "
-                f"age: {cache_info['age_seconds']:.0f}s"
+            keywords = KeywordExtractor.extract_keywords(event.content, max_keywords=15)
+            logger.debug(f"Extracted keywords: {keywords[:10]}")
+
+            # Search for related Kalshi markets (CHEAP - uses cache)
+            searcher = UniversalMarketSearcher(self.market_cache)
+            market_matches = searcher.search_markets(keywords, min_match_score=0.3, max_results=20)
+
+            if not market_matches:
+                # NO MARKETS FOUND - Save LLM call! 💰
+                logger.debug(f"No Kalshi markets found for keywords: {keywords} - skipping LLM")
+                MetricsCollector.record_signal("universal_scan", False)
+                return
+
+            # Markets found! Log what we matched
+            matched_tickers = [m.ticker for m in market_matches]
+            logger.info(
+                f"Found {len(market_matches)} related markets: {matched_tickers[:5]}... "
+                f"(scores: {[f'{m.match_score:.2f}' for m in market_matches[:3]]})"
             )
 
-            # FAST PATH: Try regex-based speed arbitrage first
+            # Get market tickers and prices for matched markets
+            market_tickers = matched_tickers
+            market_prices = searcher.get_market_prices(market_matches)
+
+            # FAST PATH: Try regex-based speed arbitrage first (economic data)
             signals = self.speed_arb.analyze_event(event, market_tickers, market_prices)
 
-            # FALLBACK: If regex found nothing, try LLM analysis for qualitative news
+            # SMART LLM GATING: Only call LLM if markets exist AND regex found nothing
             if not signals and self.llm_analyzer:
-                logger.info(f"Speed arb found no signals - trying LLM analysis for: {event.headline[:80]}")
+                logger.info(
+                    f"Regex found no signals - trying LLM for {len(market_matches)} markets: "
+                    f"{event.headline[:60]}"
+                )
 
-                llm_analysis = self.llm_analyzer.analyze_news(event, market_tickers)
+                # Pass matched markets to LLM (it only analyzes these specific markets)
+                llm_analysis = self.llm_analyzer.analyze_news(
+                    event,
+                    market_tickers,
+                    market_titles={m.ticker: m.title for m in market_matches}
+                )
 
                 if llm_analysis:
                     # Get current price for the identified market
@@ -248,11 +274,14 @@ class KalshiTradingSystem:
                     )
 
                     signals = [signal]
-                    logger.info(f"LLM generated signal: {signal}")
+                    logger.info(f"✨ LLM generated signal: {signal}")
 
             # Process each signal
             for signal in signals:
                 await self.process_signal(signal)
+
+            if signals:
+                MetricsCollector.record_signal("universal_scan", True)
 
         except Exception as e:
             logger.error(f"Error generating speed arb signals: {e}")
